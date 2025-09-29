@@ -51,7 +51,7 @@ AAA
       <td>
         <a href="https://www.getmonero.org/img/monero-logo.png">
           <img src="https://www.getmonero.org/img/monero-logo.png" width="100" height="100" alt="Adhiti Jha "/><br />
-          <sub><b>Swati Pabb</b></sub>
+          <sub><b>Adhiti Jha</b></sub>
         </a>
       </td>
   </tr>
