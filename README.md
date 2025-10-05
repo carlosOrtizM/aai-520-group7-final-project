@@ -39,6 +39,30 @@ AAA
 
 AAA
 
+## Run it yourself?
+
+Clone the GitHub repo and run the following command. Be sure to be under the project's root folder to get your .venv and 
+libraries all set up.
+
+```bash
+source initialize.sh
+```
+
+Note: It works for macOS and Linux only...
+
+We are using Ollama for Llm hosting and ChromaDB for the vector/embedding DB, as they are both beginner-friendly and
+allow for <b>local</b> deployment.
+
+So... you need to download Ollama. To get the Ollama latest versions, go to their website:
+
+Ollama:
+https://ollama.com/download
+
+Also, if you don't have Python downloaded, it is necessary as well... so go ahead and grab it.
+
+Python:
+https://www.python.org/downloads/
+
 ## Contributors
 <table>
   <tr>
