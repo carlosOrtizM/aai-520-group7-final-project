@@ -1,2 +1,6 @@
 python-dotenv
 chromadb
+yfinance
+langchain_community
+langgraph
+huggingface_hub

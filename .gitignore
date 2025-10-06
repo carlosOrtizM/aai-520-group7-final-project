@@ -1,3 +1,5 @@
 venv/
 .venv/
 .env
+gguf_models/.cache
+gguf_models/finance-chat-Q2_K.gguf

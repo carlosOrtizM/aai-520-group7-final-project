@@ -14,7 +14,11 @@ function pfinder {
 RESPONSE=$(pfinder)
 cd "$RESPONSE" || echo "Error going into $RESPONSE"
 
-#install the requirements as in the requirements.txt
-pip install -r requirements.txt | grep -v 'already satisfied'
+# cd llama.cpp || echo "Error going into llama.cpp."
+# pip install -r requirements.txt | grep -v 'already satisfied'
 
-echo "Requirements up to date."
+hf download andrijdavid/finance-chat-GGUF finance-chat-Q2_K.gguf --local-dir gguf_models
+
+echo "Please go ahead and manually configure the Modelfile under /gguf_models in case you are using a different model."
+
+#python convert_hf_to_gguf.py ../outputs_custom_llm/ --outfile ../gguf_models/fingpt-mt_llama2-7b_lora.gguf
