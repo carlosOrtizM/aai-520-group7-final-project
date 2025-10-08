@@ -8,7 +8,7 @@ from langgraph.graph import END
 from langgraph.prebuilt import ToolNode, tools_condition
 
 
-# So, this is a function that when executed (executed on the financial_agents.py) it instantiates a langgraph as
+# So, this is a function that when executed (executed on the appz.py) it instantiates a langgraph as
 # defined by this function
 
 # The langgraph seems to be composed of an input, tools, and an output
