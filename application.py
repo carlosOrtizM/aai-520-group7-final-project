@@ -16,11 +16,11 @@ def main():
         dotenv.load_dotenv()
 
         # One-time Initialization: ("Batch") document pre-processing, vectorDB setup, Langgraph compiling.
-        print(f"Do you want to load any documents? [Y/N].")
+        print(f"Do you have documents ready to be loaded? [Y/N].")
         response = "True" if get_y_n() == "Y" else "False"
 
         if response == "True":
-            print(f"Initializing...")
+            print(f"Initializing with just the placeholder documents...")
             try:
                 # from pdfs to Langchain docs
                 docs = directory_iterator()
@@ -56,6 +56,8 @@ def main():
         shutil.rmtree(path)
         os.mkdir(path)
 
+# missing merging the market news, earnings calendar, prices fetcher, and AAPL news, how will they coexist?
+# how to show them in the UI?
 
 if __name__ == "__main__":
     main()

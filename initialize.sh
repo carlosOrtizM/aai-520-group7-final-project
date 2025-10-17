@@ -1,4 +1,4 @@
-#!/bin/bash
+  #!/bin/bash
 # Execute the other initialization scripts
 
 #Going to /scripts directory, as .sh files are currently under the scripts folder

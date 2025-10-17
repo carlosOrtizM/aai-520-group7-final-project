@@ -1,7 +1,6 @@
 import os
 import uuid
 
-from chromadb.api.shared_system_client import SharedSystemClient
 from dotenv import load_dotenv
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.documents import Document

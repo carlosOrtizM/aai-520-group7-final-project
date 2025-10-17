@@ -1,4 +1,6 @@
 import os
+from uuid import uuid4
+
 import dotenv
 
 def init_folder(path):
@@ -30,14 +32,7 @@ from IPython.display import Image
 def render_graph(graph_instance):
 
     dotenv.load_dotenv()
-    # pyppeteer = MermaidDrawMethod.PYPPETEER
-
-    # Image(graph_instance.get_graph()
-    # .draw_mermaid_png(
-    #    output_file_path=(os.path.join(os.getenv("ROOT_PATH"), os.getenv("APP_OUT_PATH")) + f"/{graph_instance}.png"), draw_method=pyppeteer))
-
-    # For now just using the API for rendering the graphs....
-    path = os.path.join(os.getenv("ROOT_PATH"), os.getenv("PERSISTENCE_PATH"),os.getenv("APP_OUT_PATH")) + "/graph_instance.png"
+    path = os.path.join(os.getenv("ROOT_PATH"), os.getenv("PERSISTENCE_PATH"),os.getenv("APP_OUT_PATH")) + f"/{str(uuid4())}" + ".png"
     graph = Image(graph_instance.get_graph().draw_mermaid_png(output_file_path=(path)))
 
 def authenticate_user(username, password):
