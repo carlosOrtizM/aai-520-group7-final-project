@@ -2,7 +2,7 @@ import os
 from langgraph.constants import START
 from langgraph.graph import StateGraph
 from langgraph.graph import END
-from market_news_provider import MarketNewsProvider
+from session_init.market_news_provider import MarketNewsProvider
 from session_init.llm_loader import llm_client_loader
 from utilities.core_utils import render_graph
 from utilities.metric_utils import basic_logger
