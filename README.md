@@ -67,14 +67,14 @@ https://www.python.org/downloads/
 <table>
   <tr>
     <td>
-        <a href="https://github.com/carlosOrtizM.png">
+        <a href="https://github.com/carlosOrtizM">
           <img src="https://github.com/carlosOrtizM.png" width="100" height="100" alt="Carlos Ortiz "/><br />
           <sub><b>Carlos Ortiz</b></sub>
         </a>
       </td>
       <td>
-        <a href="https://www.getmonero.org/img/monero-logo.png">
-          <img src="https://www.getmonero.org/img/monero-logo.png" width="100" height="100" alt="Adhiti Jha "/><br />
+        <a href="https://github.com/aditithakur-569">
+          <img src="https://github.com/aditithakur-569.png" width="100" height="100" alt="Adhiti Jha "/><br />
           <sub><b>Adhiti Jha</b></sub>
         </a>
       </td>
