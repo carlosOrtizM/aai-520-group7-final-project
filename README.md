@@ -12,9 +12,6 @@ aai-520-group7-final-project
 
 ## Table of Contents
 - [Description](#Overview)
-- [Results](#Results)
-- [Demo](#usage)
-- [Contributing](#Contributors)
 - [License](#license)
 
 #### Github Project Structure
@@ -22,33 +19,27 @@ aai-520-group7-final-project
 ```
 ├── README.md                             # Project documentation (this file)
 └── .gitignore                            # Ignored files for Git
+└── g(old)                                # Archived files
+└── final-project-ipynbs                  # Final agent/workflow code files
+└── persistence                           # File I/O Storage
+
 ```
 
 # Overview
 ## About the Project
 
-Testing push...
-
-# Results
-
-**Overall Performance Comparison Table:**
-
-AAA
-
-# Demo
-
-AAA
+This is a multi-agent/workflow demo (.ipynbs) built on top of Langgraph and Langchain. The workflows/agents include:
+- An earnings_calendar_provider
+- A market_news_provider
+- A news_aggregator_chain
+- A price_history_provider
+- A rag_bot
+- A stock_news_deep_provider
+- A yf_news_provider
 
 ## Run it yourself?
 
-Clone the GitHub repo and run the following command. Be sure to be under the project's root folder to get your .venv and 
-libraries all set up.
-
-```bash
-source initialize.sh
-```
-
-Note: It works for macOS and Linux only...
+Clone the GitHub repo and be sure to download necessary libraries or external SW (where needed)
 
 We are using Ollama for Llm hosting and ChromaDB for the vector/embedding DB, as they are both beginner-friendly and
 allow for <b>local</b> deployment.
@@ -62,6 +53,8 @@ Also, if you don't have Python downloaded, it is necessary as well... so go ahea
 
 Python:
 https://www.python.org/downloads/
+
+Also i you want to run the .pdf Preprocessing locally (Unstructured) you'll need to download Poppler, Tesseract, and Magic as well. Use brew for MacOS and for Linux use your package manager (or download the binaries accordingly).
 
 ## Contributors
 <table>
