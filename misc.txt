@@ -1,0 +1,94 @@
+# Prompt chaining
+def graph_prompt_chaining():
+    try:
+
+        return graph
+
+    except Exception as e:
+        print(f"Error {e} when preprocessing files from {root_path}.")
+
+# Parallelization
+def graph_parallelization():
+    try:
+
+        return graph
+
+    except Exception as e:
+        print(f"Error {e} when preprocessing files from {root_path}.")
+
+# Routing
+def graph_routing():
+    try:
+
+        return graph
+
+    except Exception as e:
+        print(f"Error {e} when preprocessing files from {root_path}.")
+
+# Orchestrator-Worker
+def graph_orchestrator():
+    try:
+
+        return graph
+
+    except Exception as e:
+        print(f"Error {e} when preprocessing files from {root_path}.")
+
+# Evaluator-optimizer
+def graph_evaluator_optimizer():
+    try:
+
+        return graph
+
+    except Exception as e:
+        print(f"Error {e} when preprocessing files from {root_path}.")
+
+#Agent
+def graph_agent():
+    try:
+
+        return graph
+
+    except Exception as e:
+        print(f"Error {e} when preprocessing files from {root_path}.")
+
+# Basic LLM workflow
+def graph_basic_toolflow(llm):
+
+    try:
+        class FinancialQuery(BaseModel):
+            search_query: str = Field(None, description="Query that calculates the final amount in an investment "
+                                                        "account over 5 years given varying annual returns, "
+                                                        "a fixed annual fee, and a tax rate on the gains. .")
+            total_income: int = Field(
+                None, description="Total income in the past 5 years."
+            )
+
+        # Define a tool
+        def amount_calculator(returns: Optional[List[int]], annual_fee: int, tax_rate: int, years: int) -> int:
+
+            if years != len(returns):
+                return 0
+            else:
+                for income in returns:
+                    amount =  income * (1-tax_rate)
+
+                total_income = -(annual_fee * years) + amount
+                return int(total_income)
+
+        # Augment the LLM with schema for structured output
+        structured_llm = llm.with_structured_output(FinancialQuery)
+
+        # Augment the LLM with tools
+        llm_with_tools = structured_llm.bind_tools([amount_calculator])
+
+        # Invoke the augmented LLM
+
+        # Invoke the LLM with input that triggers the tool call
+        msg = llm_with_tools.invoke("How much did I make if I earned [250k, 231k, 50k, 1M, 550k, 67k] in the last couple of years,"
+                                    "paying 50k a month on stuff, and taxes are at 23%.")
+
+        print(f"Tool call {msg}")
+
+    except Exception as e:
+        print(f"Error {e} when running the basic graph.")
