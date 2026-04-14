@@ -36,7 +36,7 @@ full = [
     "finnhub-python",
     "pandas",
     "numpy",
-    "unstructured",
+    "unstructured[pdf]",
     "pypdf",
 ]
 

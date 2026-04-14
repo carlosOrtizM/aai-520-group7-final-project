@@ -374,7 +374,7 @@ Every agent route returns an error explaining what's missing.
 langchain, langchain-core, langchain-community,
 langchain-ollama, langchain-chroma, langchain-unstructured,
 langchain-text-splitters, langgraph, chromadb, ollama,
-yfinance, finnhub-python, pandas, numpy, unstructured, pypdf
+yfinance, finnhub-python, pandas, numpy, unstructured[pdf], pypdf
 ```
 
 This is enough to run RAG, market news, prices, and earnings end to
