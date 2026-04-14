@@ -689,15 +689,17 @@ def launcher_screen():
 
 
 def chat_screen(show_tour: bool = False):
-    """Two-column layout — assessment panel + tools sidebar.
+    """Two-column layout with an assessment panel plus a tools sidebar.
 
     ``show_tour`` toggles the first-time tutorial modal, mounted when the
     launcher's Get Started button arrives with ``?tour=1``.
     """
     return (
-        Title("Agent Advisor — Stock Assessment"),
+        Title("Agent Advisor: Stock Assessment"),
         ingest_toast(),
         news_toast(),
+        prices_toast(),
+        earnings_toast(),
         assessment_toast(),
         tutorial_modal() if show_tour else None,
         Div(
@@ -740,7 +742,7 @@ def news_toast():
     return _loading_toast(
         "news-toast",
         "Fetching market news…",
-        "Classifying and summarizing articles — this can take a minute.",
+        "Classifying and summarizing articles; this can take a minute.",
     )
 
 
@@ -753,7 +755,7 @@ def _chat_main():
                 cls="chat-header-title",
             ),
             P(
-                "One click — synthesize macro news, recent price action, upcoming "
+                "One click to synthesize macro news, recent price action, upcoming "
                 "earnings, and 10-K context into a grounded near-term view.",
                 cls="chat-header-sub",
             ),
@@ -868,6 +870,7 @@ def _tools_sidebar():
                 hx_get="/tools/prices?symbol=AAPL",
                 hx_target="#tool-output",
                 hx_swap="innerHTML",
+                hx_indicator="#prices-toast",
             ),
             _tool_button(
                 "AAPL Earnings", "Upcoming calendar",
@@ -875,6 +878,7 @@ def _tools_sidebar():
                 hx_get="/tools/earnings?ticker=AAPL",
                 hx_target="#tool-output",
                 hx_swap="innerHTML",
+                hx_indicator="#earnings-toast",
             ),
             Div(cls="sidebar-divider"),
             _tool_button(
@@ -897,7 +901,23 @@ def assessment_toast():
         "assessment-toast",
         "Analyzing AAPL…",
         "Fetching news, prices, earnings, retrieving 10-K context, and "
-        "synthesizing — this takes a couple of minutes.",
+        "synthesizing. This takes a couple of minutes.",
+    )
+
+
+def prices_toast():
+    return _loading_toast(
+        "prices-toast",
+        "Fetching AAPL prices…",
+        "Pulling the last 90 trading sessions from Yahoo Finance.",
+    )
+
+
+def earnings_toast():
+    return _loading_toast(
+        "earnings-toast",
+        "Fetching AAPL earnings…",
+        "Looking up upcoming earnings events from Finnhub.",
     )
 
 
@@ -928,7 +948,7 @@ def tutorial_modal():
                 H2("Welcome to Agent Advisor", cls="tutorial-title"),
                 P(
                     "Your local AI copilot for Apple stock research. "
-                    "Everything runs on your machine — no cloud, no paid APIs.",
+                    "Everything runs on your machine, with no cloud and no paid APIs.",
                     cls="tutorial-subtitle",
                 ),
                 cls="tutorial-header",
@@ -940,7 +960,7 @@ def tutorial_modal():
                     "Click the big blue button to run the full analysis pipeline. "
                     "In about two minutes you'll get a one-sentence thesis, a "
                     "bullish / neutral / bearish outlook badge, bull and bear case "
-                    "bullets, upcoming catalysts, and key risks — all grounded "
+                    "bullets, upcoming catalysts, and key risks, all grounded "
                     "in live market signals and passages from Apple's 2024 10-K.",
                 ),
                 _tutorial_section(
@@ -948,7 +968,7 @@ def tutorial_modal():
                     "Jump to raw data with the sidebar",
                     "The right-hand sidebar is for quick drill-downs without "
                     "running the full pipeline. Market News shows macro-level "
-                    "headlines (broader than Apple — it complements the "
+                    "headlines (broader than Apple, so it complements the "
                     "assessment rather than duplicating it). AAPL Prices and "
                     "AAPL Earnings pull live data on demand. Ingest PDFs loads "
                     "reference documents into the knowledge base.",
@@ -958,14 +978,14 @@ def tutorial_modal():
                     "What's running under the hood",
                     "Language models are served locally by Ollama. Apple's 2024 "
                     "10-K filing is stored as embeddings in Chroma. Every bullet "
-                    "in the assessment is tied to a specific signal — the model "
+                    "in the assessment is tied to a specific signal, and the model "
                     "is explicitly instructed never to fabricate. This is a "
                     "research and education tool, not investment advice.",
                 ),
                 cls="tutorial-body",
             ),
             Button(
-                "Got it — let's go",
+                "Got it, let's go",
                 onclick="this.closest('.tutorial-modal').remove()",
                 cls="tutorial-btn",
                 type="button",
@@ -1124,7 +1144,7 @@ def ingest_card(payload: dict):
         headline = "No chunks to ingest."
     elif new == 0:
         headline = (
-            f"Already up to date — all {total} chunks from "
+            f"Already up to date. All {total} chunks from "
             f"{files} file(s) were already indexed."
         )
     elif skipped == 0:
@@ -1217,7 +1237,7 @@ def assessment_card(payload: dict):
                 "10-K context is grounded in Apple's ",
                 Strong("2024"),
                 " annual filing. Prices, headlines, and earnings are pulled "
-                "live from Finnhub and Yahoo Finance. Research tool — ",
+                "live from Finnhub and Yahoo Finance. Research tool only: ",
                 Strong("not investment advice"),
                 ".",
                 cls="assessment-disclaimer-text",
