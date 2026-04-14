@@ -203,6 +203,18 @@ def _fetch_earnings_node(state: AssessmentState) -> dict:
 
 
 def _summarize_prices(prices: dict) -> str:
+    """Compact one-line price summary with latest TA indicator values.
+
+    ``price_history._try_attach_indicators`` bolts MA/EMA/RSI/ADX/ATR/OBV
+    onto every row when TA-Lib is available, but those columns were
+    getting dropped on the way into the synthesizer — only the close
+    prices were surviving into the prompt. That left the model with
+    nothing technical to reason about (no trend strength, no momentum,
+    no volatility regime). This summary now appends the most recent
+    non-NaN value of each indicator, with a quick above/below flag
+    versus the 10-day moving averages so llama3.2 doesn't have to do
+    the comparison itself.
+    """
     data = prices.get("data", [])
     if not data:
         return "(no price data)"
@@ -212,25 +224,148 @@ def _summarize_prices(prices: dict) -> str:
     last = closes[-1]
     first = closes[0]
     pct = ((last - first) / first * 100) if first else 0.0
-    return f"{len(closes)} sessions: ${first:,.2f} → ${last:,.2f} ({pct:+.1f}%)"
+    base = f"{len(closes)} sessions: ${first:,.2f} → ${last:,.2f} ({pct:+.1f}%)"
+
+    latest_row = data[-1]
+
+    def _num(val):
+        """Return ``val`` as a float or ``None`` for missing/NaN values."""
+        if val is None:
+            return None
+        try:
+            f = float(val)
+        except (TypeError, ValueError):
+            return None
+        # NaN is the only float that is not equal to itself.
+        return f if f == f else None
+
+    ma = _num(latest_row.get("MA"))
+    ema = _num(latest_row.get("EMA"))
+    rsi = _num(latest_row.get("RSI"))
+    adx = _num(latest_row.get("ADX"))
+    atr = _num(latest_row.get("ATR"))
+    obv = _num(latest_row.get("OBV"))
+
+    ta_parts: list[str] = []
+    if ma is not None:
+        side = "above" if last >= ma else "below"
+        ta_parts.append(f"MA10=${ma:,.2f} (price {side})")
+    if ema is not None:
+        side = "above" if last >= ema else "below"
+        ta_parts.append(f"EMA10=${ema:,.2f} (price {side})")
+    if rsi is not None:
+        ta_parts.append(f"RSI14={rsi:.1f}")
+    if adx is not None:
+        ta_parts.append(f"ADX10={adx:.1f}")
+    if atr is not None:
+        ta_parts.append(f"ATR14=${atr:,.2f}")
+    if obv is not None:
+        ta_parts.append(f"OBV={obv:,.0f}")
+
+    if ta_parts:
+        return f"{base} | " + ", ".join(ta_parts)
+    return base
 
 
-def _summarize_earnings(earnings: dict) -> str:
-    events = (earnings.get("calendar") or {}).get("earningsCalendar") or []
-    if not events:
-        return "(no upcoming earnings in window)"
-    nxt = events[0]
+_HOUR_LABELS = {
+    "amc": "after market close",
+    "bmo": "before market open",
+    "dmh": "during market hours",
+}
+
+
+def _fmt_revenue(val) -> str:
+    """Render a Finnhub revenue estimate as a compact dollar string."""
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return "N/A"
+    if n != n:  # NaN
+        return "N/A"
+    if abs(n) >= 1e9:
+        return f"${n / 1e9:.1f}B"
+    if abs(n) >= 1e6:
+        return f"${n / 1e6:.1f}M"
+    return f"${n:,.0f}"
+
+
+def _fmt_eps(val) -> str:
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return "N/A"
+    if n != n:
+        return "N/A"
+    return f"${n:,.2f}"
+
+
+def _format_earnings_event(event: dict) -> str:
+    """One-line render of a single Finnhub earnings calendar entry."""
+    date = event.get("date", "?")
+    quarter = event.get("quarter")
+    year = event.get("year")
+    hour = event.get("hour", "")
+    hour_label = _HOUR_LABELS.get(hour, hour or "time TBD")
+    eps = _fmt_eps(event.get("epsEstimate"))
+    rev = _fmt_revenue(event.get("revenueEstimate"))
+
+    period = (
+        f"fiscal Q{quarter} {year}"
+        if quarter and year
+        else "upcoming quarter"
+    )
     return (
-        f"Next earnings {nxt.get('date', '?')} "
-        f"(EPS est {nxt.get('epsEstimate', 'N/A')}, "
-        f"hour {nxt.get('hour', '?')})"
+        f"{period} on {date} ({hour_label}) — "
+        f"EPS est {eps}, revenue est {rev}"
     )
 
 
+def _summarize_earnings(earnings: dict) -> str:
+    """Chronologically-sorted earnings summary with EPS + revenue estimates.
+
+    Finnhub returns the ``earningsCalendar`` list in an order we can't
+    rely on — a 120-day lookahead for AAPL has come back with the
+    further-out event first, so taking ``events[0]`` was mislabeling
+    the later quarter as "next". Sort ascending by date so the first
+    entry is actually the nearest future event. Render up to two
+    events so the synthesizer sees both the immediate catalyst and
+    the follow-up one if it exists inside the window.
+    """
+    events = (earnings.get("calendar") or {}).get("earningsCalendar") or []
+    if not events:
+        return "(no upcoming earnings in window)"
+
+    sorted_events = sorted(events, key=lambda e: e.get("date") or "")
+    nxt = _format_earnings_event(sorted_events[0])
+    if len(sorted_events) == 1:
+        return f"Next: {nxt}"
+    then = _format_earnings_event(sorted_events[1])
+    return f"Next: {nxt}\nThen: {then}"
+
+
 def _summarize_headlines(news: list[dict]) -> str:
+    """Render headlines plus trimmed summaries for the downstream prompts.
+
+    Headlines alone were giving the synthesizer too little to cite back
+    — llama3.2 was leaning on the headline text as the entire claim.
+    Including the Finnhub summary (trimmed to keep the prompt bounded)
+    gives the model real context to ground its bullets in.
+    """
     if not news:
         return "(no headlines)"
-    return "\n".join(f"- {n.get('headline', '').strip()}" for n in news if n.get("headline"))
+
+    lines: list[str] = []
+    for n in news:
+        headline = (n.get("headline") or "").strip()
+        if not headline:
+            continue
+        summary = " ".join((n.get("summary") or "").split())
+        if len(summary) > 600:
+            summary = summary[:600].rstrip() + "…"
+        lines.append(f"- {headline}")
+        if summary:
+            lines.append(f"  {summary}")
+    return "\n".join(lines) if lines else "(no headlines)"
 
 
 def _build_rag_query_node(state: AssessmentState) -> dict:
