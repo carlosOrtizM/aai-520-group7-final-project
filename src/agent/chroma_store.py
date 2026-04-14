@@ -6,8 +6,8 @@ from an Ollama model. The store is persisted under
 exit, unlike the original application.py).
 """
 
+import hashlib
 import os
-import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -55,15 +55,32 @@ def get_vector_store():
     return _VECTOR_STORE
 
 
-def ingest_documents(documents) -> int:
-    """Embed and persist a batch of langchain Documents.
+def _chunk_id(chunk) -> str:
+    """Stable ID for a chunk — sha256 of (source || content).
+
+    Deterministic IDs make re-ingestion idempotent: the same PDF
+    chunked the same way produces the same IDs, so the existence
+    check in ``ingest_documents`` can skip them instead of writing
+    duplicate embeddings under fresh UUIDs.
+    """
+    src = chunk.metadata.get("source") or chunk.metadata.get("filename") or ""
+    h = hashlib.sha256()
+    h.update(str(src).encode("utf-8"))
+    h.update(b"\x00")
+    h.update(chunk.page_content.encode("utf-8"))
+    return h.hexdigest()
+
+
+def ingest_documents(documents) -> dict:
+    """Embed and persist chunks, skipping any already present in the store.
 
     Args:
         documents: list of lists of langchain Documents (the shape
             returned by pdf_loader.directory_iterator).
 
     Returns:
-        Number of chunks inserted.
+        Dict with ``new`` (chunks actually embedded), ``skipped``
+        (chunks already indexed), and ``total`` (chunks seen).
     """
     from langchain_core.documents import Document
 
@@ -76,6 +93,25 @@ def ingest_documents(documents) -> int:
         for doc in documents
         for chunk in doc
     ]
-    ids = [str(uuid.uuid4()) for _ in flat]
-    store.add_documents(documents=flat, ids=ids)
-    return len(flat)
+    if not flat:
+        return {"new": 0, "skipped": 0, "total": 0}
+
+    ids = [_chunk_id(d) for d in flat]
+    existing = store.get(ids=ids)
+    existing_ids = set(existing.get("ids") or [])
+
+    new_docs, new_ids = [], []
+    for idx, doc in zip(ids, flat):
+        if idx in existing_ids:
+            continue
+        new_ids.append(idx)
+        new_docs.append(doc)
+
+    if new_docs:
+        store.add_documents(documents=new_docs, ids=new_ids)
+
+    return {
+        "new": len(new_docs),
+        "skipped": len(flat) - len(new_docs),
+        "total": len(flat),
+    }

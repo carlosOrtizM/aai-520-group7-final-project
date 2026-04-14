@@ -116,9 +116,16 @@ async def ingest_endpoint(body: ServiceRequest):
 
         docs = directory_iterator()
         if not docs:
-            return {"ingested": 0, "note": "no PDFs found in KB path"}
-        count = ingest_documents(docs)
-        return {"ingested": count, "files": len(docs)}
+            return {
+                "new": 0,
+                "skipped": 0,
+                "total": 0,
+                "files": 0,
+                "note": "no PDFs found in KB path",
+            }
+        stats = ingest_documents(docs)
+        stats["files"] = len(docs)
+        return stats
     except Exception as e:
         logger.error(f"Error on /ingest: {e}")
         return {"error": str(e)}
