@@ -447,6 +447,42 @@ def _rag_context_node(state: AssessmentState) -> dict:
     return {"rag_context": context}
 
 
+def _synth_with_fallback(llm, schema, messages) -> tuple[dict | None, str | None]:
+    """Run the structured synthesis call with a raw-text fallback.
+
+    llama3.2's ``with_structured_output`` path is flaky: sometimes it
+    raises a Pydantic ``ValidationError`` on malformed JSON, and
+    sometimes it silently returns a model whose required string/list
+    fields are all empty because the model quietly produced the
+    minimum satisfying shape. Both modes leave the UI with nothing
+    useful to render.
+
+    This wrapper tries the structured path first, treats either a
+    raised exception or an empty ``thesis`` field as failure, and
+    falls back to a plain ``llm.invoke`` of the same messages so we
+    at least have the raw model text to render as markdown in the
+    card. Returns ``(dump, raw_markdown)`` where exactly one side is
+    populated:
+
+    - success: ``(dump_dict, None)``
+    - failure: ``(None, raw_text)``
+    """
+    try:
+        structured = llm.with_structured_output(schema)
+        result = structured.invoke(messages)
+        dump = result.model_dump()
+        if not (dump.get("thesis") or "").strip():
+            raise ValueError("structured output returned empty thesis")
+        return dump, None
+    except Exception:
+        try:
+            raw = llm.invoke(messages)
+            text = (raw.content or "").strip()
+            return None, text or "_(no output from model)_"
+        except Exception as e:
+            return None, f"_(model invoke failed: {e})_"
+
+
 def _synthesize_node(state: AssessmentState) -> dict:
     """LLM with structured output produces the final assessment."""
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -471,7 +507,6 @@ def _synthesize_node(state: AssessmentState) -> dict:
         risks: list[str] = Field(description="Key risks to monitor.")
 
     llm = get_llm_client()
-    structured = llm.with_structured_output(StockAssessment)
 
     ticker = state["ticker"]
     headlines = _summarize_headlines(state.get("news", []))
@@ -507,14 +542,14 @@ def _synthesize_node(state: AssessmentState) -> dict:
         f"{ticker} with other companies that may appear in the 10-K context."
     )
 
-    result = structured.invoke(
-        [
-            SystemMessage(content=system_msg),
-            HumanMessage(content=prompt),
-        ]
-    )
-
-    return {"assessment": result.model_dump()}
+    messages = [
+        SystemMessage(content=system_msg),
+        HumanMessage(content=prompt),
+    ]
+    dump, raw_markdown = _synth_with_fallback(llm, StockAssessment, messages)
+    if dump is not None:
+        return {"assessment": dump}
+    return {"assessment": {"raw_markdown": raw_markdown}}
 
 
 # ---------------------------------------------------------------------------

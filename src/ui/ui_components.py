@@ -308,6 +308,31 @@ USD_BRAND_CSS = Style("""
     .assessment-query-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
     .assessment-query-text { font-style: italic; color: var(--text-secondary); }
 
+    /* --- Raw-fallback assessment body (structured output failed) --- */
+    .assessment-raw-body {
+        background: #fafbfc;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin: 0 0 16px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--text-primary);
+    }
+    .assessment-raw-body h1, .assessment-raw-body h2,
+    .assessment-raw-body h3, .assessment-raw-body h4,
+    .assessment-raw-body h5 {
+        margin: 14px 0 8px; font-size: 14px; font-weight: 700;
+    }
+    .assessment-raw-body p { margin: 6px 0; }
+    .assessment-raw-body ul, .assessment-raw-body ol { margin: 6px 0 6px 20px; }
+    .assessment-raw-body li { margin: 3px 0; }
+    .assessment-raw-body code {
+        background: #f1f5f9; padding: 1px 5px;
+        border-radius: 4px; font-size: 12px;
+    }
+    .outlook-raw { background: #fef3c7; color: #b45309; }
+
     @media (max-width: 720px) {
         .assessment-grid { grid-template-columns: 1fr; }
     }
@@ -1174,6 +1199,48 @@ def _assessment_list(items: list[str]):
     return Ul(*[Li(item) for item in items], cls="assessment-list")
 
 
+def _raw_assessment_card(ticker: str, rag_query: str, raw_markdown: str):
+    """Fallback render when the agent couldn't parse structured output.
+
+    The structured StockAssessment schema failed validation (empty
+    thesis or raised ValidationError) and the agent dropped the raw
+    LLM text back for us to render. Show it as markdown inside the
+    same card frame, with an amber 'Raw Output' badge so the user
+    knows this is ungated model text rather than a parsed assessment.
+    """
+    return Div(
+        Div(
+            H3(f"{ticker} Near-Term Assessment", cls="assessment-title"),
+            Span("Raw Output", cls="outlook-badge outlook-raw"),
+            cls="assessment-header",
+        ),
+        Div(
+            render_md(raw_markdown),
+            cls="assessment-raw-body",
+        ),
+        Div(
+            Span("RAG query:", cls="assessment-query-label"),
+            Span(rag_query, cls="assessment-query-text"),
+            cls="assessment-query",
+        ) if rag_query else None,
+        Div(
+            P(
+                NotStr("&#9432;"), " ",
+                "The model did not produce a structured assessment for this run. ",
+                "The text above is the raw llama3.2 output rendered as markdown, "
+                "which is a known limitation of small local models with function "
+                "calling. All usual caveats still apply — this is research "
+                "and education only, ",
+                Strong("not investment advice"),
+                ".",
+                cls="assessment-disclaimer-text",
+            ),
+            cls="assessment-disclaimer",
+        ),
+        cls="assessment-card",
+    )
+
+
 def assessment_card(payload: dict):
     """Render the StockAssessment payload as a pretty grounded card."""
     if "error" in payload:
@@ -1182,6 +1249,14 @@ def assessment_card(payload: dict):
     ticker = payload.get("ticker", "?")
     rag_query = payload.get("rag_query", "")
     assessment = payload.get("assessment") or {}
+
+    # llama3.2's structured-output path is flaky. When the agent's
+    # _synth_with_fallback helper couldn't parse a valid StockAssessment,
+    # it drops the raw LLM text into raw_markdown for us to render
+    # verbatim instead of showing an empty structured card.
+    raw_markdown = assessment.get("raw_markdown")
+    if raw_markdown is not None:
+        return _raw_assessment_card(ticker, rag_query, raw_markdown)
 
     thesis = assessment.get("thesis") or "(no thesis generated)"
     outlook = (assessment.get("outlook") or "neutral").lower()
