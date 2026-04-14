@@ -19,6 +19,7 @@ reasons over the headlines.
 from typing import Any, Literal, TypedDict
 
 _GRAPH_SINGLETON = None
+_CLASSIFIER_LLM = None
 
 # Symbol → company-name aliases for headline relevance filtering.
 # Finnhub's company_news endpoint bundles adjacent-ticker stories
@@ -62,23 +63,29 @@ class AssessmentState(TypedDict, total=False):
 
 
 def _fetch_news_node(state: AssessmentState) -> dict:
-    """Pull ticker-specific headlines from Finnhub over the last week.
+    """Pull ticker-specific headlines from Finnhub and filter for relevance.
 
-    First smoke run used the macro ``general_news`` feed, which made the
-    downstream query builder drift onto unrelated names (a Lucid/Uber
-    headline hijacked the whole assessment). Swapped to ``company_news``
-    scoped to the requested ticker so every headline is about the stock
-    being assessed.
+    Two-stage filter. First, a cheap substring check against ``_TICKER_ALIASES``
+    drops the bulk of the Finnhub feed that doesn't mention the ticker
+    anywhere (248 → ~30 articles for AAPL on a typical day). Second, a per
+    article LLM classifier drops stories that name the ticker only in
+    passing — an Amazon/Globalstar deal whose summary says "with Apple",
+    or a ByBit crypto article listing Apple as a tradeable stock. Both
+    patterns bypassed the pure-substring filter and were hijacking
+    downstream synthesis.
+
+    Finnhub's ``related`` field is not usable for filtering: ``company_news``
+    echoes the requested symbol back on every article it returns,
+    including obvious drift stories, so there's nothing authoritative
+    to key off of except the text itself.
     """
     try:
-        # Old (macro feed — caused query-builder drift, kept as reference):
-        # from src.agent.market_news import fetch_news
-        # raw = fetch_news("general")[:6]
         from src.agent.market_news import fetch_company_news
 
         ticker = state["ticker"]
         raw = fetch_company_news(ticker, lookback_days=7)
-        relevant = [a for a in raw if _headline_mentions_ticker(a, ticker)][:6]
+        candidates = [a for a in raw if _headline_mentions_ticker(a, ticker)][:12]
+        relevant = _llm_filter_relevant_news(candidates, ticker)[:6]
         return {
             "news": [
                 {
@@ -90,6 +97,80 @@ def _fetch_news_node(state: AssessmentState) -> dict:
         }
     except Exception:
         return {"news": []}
+
+
+def _get_classifier_llm():
+    """Dedicated deterministic LLM client for the relevance filter.
+
+    Separate from ``get_llm_client`` because that singleton is cached at
+    ``temperature=0.2`` for generative work (query builder + synthesizer),
+    and a non-zero temperature was causing the classifier to flip its
+    verdict on the same article across runs. A fresh ``ChatOllama`` at
+    ``temperature=0`` is deterministic and cheap to keep around.
+    """
+    global _CLASSIFIER_LLM
+    if _CLASSIFIER_LLM is not None:
+        return _CLASSIFIER_LLM
+
+    from langchain_ollama import ChatOllama
+
+    from src.config import TEXT_MODEL
+
+    _CLASSIFIER_LLM = ChatOllama(model=TEXT_MODEL, temperature=0)
+    return _CLASSIFIER_LLM
+
+
+def _llm_filter_relevant_news(articles: list[dict], ticker: str) -> list[dict]:
+    """Per-article LLM relevance classifier.
+
+    Uses a plain YES/NO prompt instead of ``with_structured_output``
+    because llama3.2 is weak at function-calling / JSON-schema output
+    and was flipping verdicts on borderline cases. String parsing on a
+    one-word answer is both more reliable and faster on this model.
+    Fails open so an Ollama hiccup can't silently delete all news.
+    """
+    if not articles:
+        return articles
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    llm = _get_classifier_llm()
+    system_msg = (
+        f"You filter financial news for {ticker}. Answer with exactly one "
+        f"word: YES or NO. YES only when the article is substantively about "
+        f"{ticker} — its products, earnings, guidance, management, stock "
+        f"action, legal or regulatory events. NO when {ticker} is named "
+        f"only in passing: a partner in someone else's deal, an example of "
+        f"a tradeable stock, a comparison, or context for a different "
+        f"company's story. When in doubt, answer NO.\n\n"
+        f"EXAMPLES:\n"
+        f"- 'Apple's Fiscal Q2 Earnings Could Beat Street Consensus' -> YES\n"
+        f"- 'Amazon acquiring Globalstar' (summary mentions 'agreement with "
+        f"Apple') -> NO (story is about Amazon; Apple is a partner)\n"
+        f"- 'ByBit Lets Traders Trade Stocks Like Apple and IBIT' -> NO "
+        f"(story is about ByBit; Apple is an example)"
+    )
+
+    kept = []
+    for article in articles:
+        prompt = (
+            f"HEADLINE: {article.get('headline', '')}\n"
+            f"SUMMARY: {(article.get('summary') or '')[:300]}\n\n"
+            f"Is this article substantively about {ticker}? Answer YES or NO."
+        )
+        try:
+            result = llm.invoke(
+                [
+                    SystemMessage(content=system_msg),
+                    HumanMessage(content=prompt),
+                ]
+            )
+            answer = (result.content or "").strip().upper()
+            if answer.startswith("YES"):
+                kept.append(article)
+        except Exception:
+            kept.append(article)
+    return kept
 
 
 def _fetch_prices_node(state: AssessmentState) -> dict:
