@@ -22,4 +22,8 @@ async def send_to_agent(session, payload: ServiceRequest, endpoint: str) -> dict
         async with session.post(url, json=payload.model_dump()) as resp:
             return await resp.json()
     except Exception as e:
-        return {"error": str(e)}
+        # asyncio.TimeoutError stringifies to "" — fall back to the class
+        # name so the UI error card shows something meaningful instead of
+        # rendering "Assessment: " with no message.
+        msg = str(e) or type(e).__name__
+        return {"error": msg}
