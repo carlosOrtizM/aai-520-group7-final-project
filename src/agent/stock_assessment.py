@@ -420,11 +420,22 @@ def _build_rag_query_node(state: AssessmentState) -> dict:
     )
 
     query = (response.content or "").strip().strip('"').strip("'")
-    if not query or ticker.upper() not in query.upper():
+    if not query:
+        # Nothing came back — substitute a generic ticker-anchored query
+        # so rag_context always has something to retrieve against.
         query = (
             f"What does {ticker}'s 10-K identify as its primary near-term "
             f"risks and growth drivers?"
         )
+    elif ticker.upper() not in query.upper():
+        # llama3.2 frequently writes a signal-specific question (e.g.
+        # "How is iPhone demand expected to affect services revenue?")
+        # without naming the ticker. The previous behavior discarded
+        # those outright and fell back to the generic question, which
+        # also threw away all the signal-specific targeting. Prepending
+        # the ticker preserves the LLM's intent while still guaranteeing
+        # the ticker appears in the query text.
+        query = f"Regarding {ticker}: {query}"
     return {"rag_query": query}
 
 
