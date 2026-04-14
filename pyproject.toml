@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-advisor"
+version = "0.1.0"
+description = "Agent Advisor — AAI-520 Group 7 Final Project"
+requires-python = ">=3.11"
+dependencies = [
+    "python-fasthtml",
+    "MonsterUI",
+    "fastapi",
+    "uvicorn",
+    "aiohttp",
+    "pydantic",
+    "python-dotenv",
+]
+
+# Heavy LLM/data extras — installed on demand to keep the slim
+# scaffold fast to bootstrap. Use `pip install -e ".[full]"` to pull
+# in the agent service's runtime dependencies.
+[project.optional-dependencies]
+full = [
+    "langchain",
+    "langchain-core",
+    "langchain-community",
+    "langchain-ollama",
+    "langchain-chroma",
+    "langchain-unstructured",
+    "langchain-text-splitters",
+    "langgraph",
+    "chromadb",
+    "ollama",
+    "yfinance",
+    "finnhub-python",
+    "pandas",
+    "numpy",
+    "unstructured",
+    "pypdf",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
