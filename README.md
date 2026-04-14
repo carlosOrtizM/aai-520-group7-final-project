@@ -10,11 +10,22 @@
 
 aai-520-group7-final-project
 
-A two-service financial research copilot. The UI is a hypermedia-driven
-chat (FastHTML + htmx, no JS framework) and the agent is a FastAPI
-service backed by local LLMs (Ollama) and a local vector store (Chroma).
-For the full design rationale — service split, contracts, conventions,
-and the agent consolidation plan — read [`ARCHITECTURE.md`](ARCHITECTURE.md).
+A two-service financial research copilot. The main interaction is a
+single-button **AAPL stock assessment**: a deterministic LangGraph
+fans out to three parallel data fetchers (ticker-filtered company
+news, recent OHLCV with TA indicators, upcoming earnings), fans in
+to an LLM that writes a targeted 10-K retrieval query, pulls
+grounding passages from Apple's 2024 10-K via Chroma, and synthesizes
+a structured view (thesis, outlook, bull case, bear case, catalysts,
+risks). A right-hand sidebar exposes each data source as a manual
+shortcut so you can drill into the raw signals without running the
+full pipeline.
+
+The UI is hypermedia-driven (FastHTML + htmx, no JS framework); the
+agent is a FastAPI service backed by local LLMs (Ollama) and a local
+vector store (Chroma). For the full design rationale — service split,
+contracts, the deterministic-vs-agentic decision, and the agent
+consolidation plan — read [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Table of Contents
 - [Overview](#overview)
@@ -35,10 +46,10 @@ original course deliverable; they are not imported at runtime.
 
 Two services, two ports:
 
-| Service | Stack                | Port  | Role                                            |
-|---------|----------------------|-------|-------------------------------------------------|
-| UI      | FastHTML + MonsterUI | 8010  | Chat screen, sidebar tools, htmx swaps          |
-| Agent   | FastAPI + LangGraph  | 8011  | RAG, news, prices, earnings, ingestion          |
+| Service | Stack                | Port  | Role                                                                 |
+|---------|----------------------|-------|----------------------------------------------------------------------|
+| UI      | FastHTML + MonsterUI | 8010  | Launcher, assessment screen, sidebar tools, htmx swaps, tutorial modal |
+| Agent   | FastAPI + LangGraph  | 8011  | Stock assessment graph, news, prices, earnings, ingestion            |
 
 They communicate over `aiohttp` POSTs using a shared `ServiceRequest`
 Pydantic model. No Docker. No database. No Streamlit. No Gradio.
@@ -58,15 +69,16 @@ agent-advisor/
 │   ├── agent/                 # FastAPI service — :8011
 │   │   ├── app.py
 │   │   ├── llm_loader.py      # cached ChatOllama
-│   │   ├── chroma_store.py    # persistent Chroma + ingest
+│   │   ├── chroma_store.py    # persistent Chroma + idempotent ingest
 │   │   ├── pdf_loader.py
-│   │   ├── rag_graph.py       # 10-K Q&A
-│   │   ├── market_news.py     # Finnhub + sentiment/category graph
-│   │   ├── price_history.py   # yfinance + optional TA-Lib
+│   │   ├── rag_graph.py       # 10-K retrieval helper
+│   │   ├── stock_assessment.py# deterministic /assessment LangGraph (main flow)
+│   │   ├── market_news.py     # Finnhub macro + company_news + classifier graph
+│   │   ├── price_history.py   # yfinance + TA-Lib indicators
 │   │   └── earnings_calendar.py
 │   └── ui/                    # FastHTML service — :8010
 │       ├── app.py
-│       ├── ui_components.py
+│       ├── ui_components.py   # assessment card, tutorial modal, loading toasts
 │       ├── ui_handler.py
 │       └── ui_utils.py
 │
@@ -94,14 +106,16 @@ agent-advisor/
   ollama serve   # in its own terminal
   ```
 - **Finnhub API key** (free tier is fine) — set `FINNHUB_API_KEY` in
-  `.env`. Required for `/news` and `/earnings`. Other routes work
-  without it.
-- **Optional system libs:**
-  - `poppler`, `tesseract`, `libmagic` — for PDF ingestion via the
-    `unstructured` library. On Debian/Ubuntu:
-    `sudo apt install poppler-utils tesseract-ocr libmagic1`.
-  - `TA-Lib` — for technical indicators on `/prices`. Optional;
-    `price_history.py` falls back to plain OHLCV if missing.
+  `.env`. Required for `/news`, `/earnings`, and the news-fetching
+  step of `/assessment`. Prices and RAG work without it.
+- **TA-Lib** — pulled in by `[full]` as the `TA-Lib` pip package,
+  which ships pre-built wheels bundling the C library. No separate
+  system package needed on Linux/macOS/Windows for supported Python
+  versions. Indicators (MA, EMA, RSI, ADX, ATR, OBV) appear on both
+  the sidebar prices card and the assessment graph's price signals.
+- **Optional system libs** (PDF ingestion):
+  - `poppler`, `tesseract`, `libmagic` — for `unstructured`. On
+    Debian/Ubuntu: `sudo apt install poppler-utils tesseract-ocr libmagic1`.
 
 ### Install
 
@@ -140,29 +154,43 @@ python src/ui/app.py       # FastHTML dev server, port 8010
 
 1. Start Ollama (`ollama serve`).
 2. `python main.py`.
-3. Open http://localhost:8010, click **Continue**.
-4. In the chat screen sidebar, click **Ingest PDFs** to load the
-   AAPL 10-K from `persistence/reference_files/` into Chroma.
-5. Type a question into the chat box. The first call is slow
-   (model warm-up); subsequent calls hit the cached LangGraph.
-6. Try the **Market News**, **AAPL Prices**, **AAPL Earnings**
-   sidebar buttons to exercise the tool routes.
+3. Open http://localhost:8010, click **Get Started** — a first-run
+   tutorial modal walks through what the app does (main flow,
+   sidebar tools, and what's running under the hood).
+4. Click **Ingest PDFs** in the right sidebar to load Apple's 2024
+   10-K from `persistence/reference_files/` into Chroma. This is
+   idempotent — re-pressing the button reports "already up to date"
+   instead of writing duplicate embeddings.
+5. Click **Generate AAPL Assessment**. The first run takes ~2 minutes
+   (Ollama cold start + the 6-node graph + two LLM calls) and
+   returns a structured card: thesis, bullish/neutral/bearish
+   outlook, bull and bear case bullets, catalysts, and risks —
+   each grounded in live signals and the 10-K.
+6. Exercise the sidebar shortcuts any time:
+   - **Market News** — macro feed (broader than Apple; complements
+     the assessment rather than duplicating it).
+   - **AAPL Prices** — last 60 trading days of OHLCV + TA indicators.
+   - **AAPL Earnings** — upcoming earnings calendar.
 
 ## Agents
 
-5 agents under `src/agent/`, down from 7 in the original notebook
+One orchestrator (the deterministic assessment graph) plus four
+building-block tool providers, down from 7 in the original notebook
 deliverable. The two dropped notebooks (`yf_news_provider`,
 `stock_news_deep_provider`) were redundant with the news pipeline
 we kept — see [`ARCHITECTURE.md`](ARCHITECTURE.md) §7 for the full
-inventory and rationale.
+inventory, the deterministic-vs-agentic decision, and the news
+source split (sidebar shows macro headlines via `general_news`;
+assessment uses ticker-filtered `company_news`).
 
-| Agent           | Module                          | Source         | Status        |
-|-----------------|---------------------------------|----------------|---------------|
-| RAG (10-K Q&A)  | `src/agent/rag_graph.py`        | local PDF      | ✅ ported      |
-| Market news     | `src/agent/market_news.py`      | Finnhub        | ✅ ported      |
-| Deep research   | `src/agent/news_aggregator.py`  | DuckDuckGo     | ⏳ pending     |
-| Price history   | `src/agent/price_history.py`    | yfinance       | ✅ ported      |
-| Earnings calendar | `src/agent/earnings_calendar.py` | Finnhub      | ✅ ported      |
+| Component           | Module                            | Role                                                     | Status    |
+|---------------------|-----------------------------------|----------------------------------------------------------|-----------|
+| Stock assessment    | `src/agent/stock_assessment.py`   | Orchestrator — 6-node LangGraph, the main `/assessment` flow | shipped   |
+| 10-K retrieval      | `src/agent/rag_graph.py`          | `retrieve_10k_context` — pure Chroma lookup helper       | shipped   |
+| Market news         | `src/agent/market_news.py`        | Macro classifier graph + `fetch_company_news`            | shipped   |
+| Price history       | `src/agent/price_history.py`      | yfinance OHLCV + TA-Lib indicators                       | shipped   |
+| Earnings calendar   | `src/agent/earnings_calendar.py`  | Finnhub earnings calendar                                | shipped   |
+| Deep research       | `src/agent/news_aggregator.py`    | DuckDuckGo exploratory planner                           | pending   |
 
 ## Contributors
 <table>

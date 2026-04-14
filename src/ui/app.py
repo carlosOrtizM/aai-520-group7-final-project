@@ -11,8 +11,7 @@ from monsterui.all import *  # noqa: F401,F403
 
 from src.ui.ui_components import (
     USD_BRAND_CSS,
-    bot_message,
-    chat_exchange,
+    assessment_card,
     chat_screen,
     earnings_card,
     error_card,
@@ -20,10 +19,9 @@ from src.ui.ui_components import (
     launcher_screen,
     news_card,
     prices_card,
-    user_message,
 )
 from src.ui.ui_handler import (
-    handle_chat,
+    handle_assessment,
     handle_earnings,
     handle_ingest,
     handle_news,
@@ -54,30 +52,24 @@ def get():
 
 @rt("/chat")
 @log_call(logger)
-def get():
+def get(tour: int = 0):
     try:
-        return chat_screen()
+        return chat_screen(show_tour=bool(tour))
     except Exception as e:
         logger.error(f"Error rendering chat screen: {e}")
         return Div(P("Error loading chat.", cls="uk-text-danger"))
 
 
-@rt("/send")
+@rt("/assessment")
 @log_call(logger)
-async def post(query: str = ""):
-    """Submit a chat message to the agent service and append both turns."""
-    text = (query or "").strip()
-    if not text:
-        return Div()
+async def post(ticker: str = "AAPL"):
+    """Trigger the deterministic stock assessment graph and swap its card."""
     try:
-        result = await handle_chat(text)
-        if "error" in result:
-            return Div(user_message(text), error_card(f"Agent: {result['error']}"))
-        answer = result.get("answer", "(no answer)")
-        return chat_exchange(text, answer)
+        payload = await handle_assessment(ticker=ticker)
+        return assessment_card(payload)
     except Exception as e:
-        logger.error(f"Error on /send: {e}")
-        return Div(user_message(text), error_card("Agent request failed."))
+        logger.error(f"Error on /assessment: {e}")
+        return error_card("Assessment request failed.")
 
 
 @rt("/tools/news")

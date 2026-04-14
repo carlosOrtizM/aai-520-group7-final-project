@@ -11,13 +11,13 @@ import aiohttp
 from src.ui.ui_utils import pack_request, pack_request_with_params, send_to_agent
 
 
-async def handle_chat(query: str) -> dict:
+async def handle_assessment(ticker: str = "AAPL") -> dict:
     try:
-        req = pack_request(query=query)
+        req = pack_request(ticker=ticker)
         async with aiohttp.ClientSession() as session:
-            return await send_to_agent(session, req, "/chat")
+            return await send_to_agent(session, req, "/assessment")
     except Exception as e:
-        return {"error": f"chat call failed: {e}"}
+        return {"error": f"assessment call failed: {e}"}
 
 
 async def handle_news(category: str = "general", limit: int = 6) -> dict:

@@ -38,6 +38,7 @@ full = [
     "numpy",
     "unstructured[pdf]",
     "pypdf",
+    "TA-Lib",
 ]
 
 [tool.setuptools.packages.find]

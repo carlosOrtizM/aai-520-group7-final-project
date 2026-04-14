@@ -28,26 +28,26 @@ async def health_endpoint():
     return {"status": "ok", "service": "agent", "port": 8011}
 
 
-@app.post("/chat")
+@app.post("/assessment")
 @log_call(logger)
-async def chat_endpoint(body: ServiceRequest):
-    """RAG chat — runs the langgraph RAG pipeline on a user query.
+async def assessment_endpoint(body: ServiceRequest):
+    """Deterministic stock assessment — fan-out fetch → RAG → synthesize.
 
     Body shape:
-        data = {"query": "..."}
-        params = {}  # reserved (history limits, model overrides, etc.)
+        data = {"ticker": "AAPL"}
+        params = {}  # reserved
     """
     try:
         req = unpack_request(body)
-        query = req.data.get("query", "").strip()
-        if not query:
-            return {"error": "empty query"}
+        ticker = req.data.get("ticker", "AAPL").upper()
+        if not validate_ticker(ticker):
+            return {"error": f"invalid ticker: {ticker}"}
 
-        from src.agent.rag_graph import run_rag_query
+        from src.agent.stock_assessment import run_stock_assessment
 
-        return await run_rag_query(query)
+        return await run_stock_assessment(ticker)
     except Exception as e:
-        logger.error(f"Error on /chat: {e}")
+        logger.error(f"Error on /assessment: {e}")
         return {"error": str(e)}
 
 

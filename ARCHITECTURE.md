@@ -12,12 +12,18 @@ wrong — open a PR.
 
 ## 1. Overview
 
-A two-service, hypermedia-driven financial research copilot. A user
-asks questions in a chat UI, and an agent service answers either by
-RAG over Apple's 10-K, by classifying live market news, by pulling
-price history, or by looking up upcoming earnings. The LLM stack is
-local (Ollama) so the project runs without paid API keys. The vector
-store is local (Chroma) so it survives restarts without external infra.
+A two-service, hypermedia-driven financial research copilot. The
+primary interaction is a single-button **AAPL stock assessment**: a
+deterministic LangGraph fans out to three parallel data fetchers
+(ticker-filtered company news, recent OHLCV, upcoming earnings),
+fans in to an LLM that writes a targeted retrieval query, pulls
+grounding passages from Apple's 2024 10-K via Chroma, and
+synthesizes a structured assessment (thesis, outlook, bull/bear,
+catalysts, risks). A right-hand sidebar exposes each data source as
+a manual shortcut so users can drill into the raw signals without
+running the full pipeline. The LLM stack is local (Ollama) so the
+project runs without paid API keys. The vector store is local
+(Chroma) so it survives restarts without external infra.
 
 There is no Docker. There is no Streamlit. There is no Gradio.
 A previous teammate scaffolded a Docker + Streamlit variant; that path
@@ -96,10 +102,11 @@ agent-advisor/
 │   │   ├── app.py             # routes
 │   │   ├── agent_utils.py     # unpack_request, validate_*
 │   │   ├── llm_loader.py      # cached ChatOllama client
-│   │   ├── chroma_store.py    # persistent Chroma + ingest
+│   │   ├── chroma_store.py    # persistent Chroma + idempotent ingest
 │   │   ├── pdf_loader.py      # PDF → langchain Document chunks
-│   │   ├── rag_graph.py       # LangGraph RAG (10-K Q&A)
-│   │   ├── market_news.py     # Finnhub + sentiment/category/bullets graph
+│   │   ├── rag_graph.py       # 10-K retrieval helper (retrieve_10k_context)
+│   │   ├── stock_assessment.py# deterministic LangGraph — the main /assessment flow
+│   │   ├── market_news.py     # Finnhub news (macro + per-ticker) + classifier graph
 │   │   ├── price_history.py   # yfinance + optional TA-Lib
 │   │   └── earnings_calendar.py
 │   │
@@ -139,31 +146,37 @@ load.
 
 ## 4. Agent service routes
 
-| Route        | Method | Body / Params                          | Returns                         |
-|--------------|--------|----------------------------------------|---------------------------------|
-| `/health`    | GET    | —                                      | liveness probe                  |
-| `/chat`      | POST   | `data.query`                           | RAG answer                      |
-| `/news`      | POST   | `data.category`, `params.limit`        | per-article + aggregate stats   |
-| `/prices`    | POST   | `data.symbol`, `params.window_days`    | OHLCV (+ TA if talib installed) |
-| `/earnings`  | POST   | `data.ticker`, `params.lookahead_days` | Finnhub earnings calendar       |
-| `/ingest`    | POST   | —                                      | PDF → Chroma chunk count        |
+| Route          | Method | Body / Params                          | Returns                                       |
+|----------------|--------|----------------------------------------|-----------------------------------------------|
+| `/health`      | GET    | —                                      | liveness probe                                |
+| `/assessment`  | POST   | `data.ticker`                          | structured `StockAssessment` (see §7)         |
+| `/news`        | POST   | `data.category`, `params.limit`        | per-article classifier + aggregate stats     |
+| `/prices`      | POST   | `data.symbol`, `params.window_days`    | OHLCV (+ TA if talib installed)               |
+| `/earnings`    | POST   | `data.ticker`, `params.lookahead_days` | Finnhub earnings calendar                     |
+| `/ingest`      | POST   | —                                      | `{new, skipped, total, files}` — idempotent  |
 
 Every route returns `{"error": "..."}` on failure, never an HTTP 5xx.
 The UI renders the error inline.
+
+`/ingest` is safe to call repeatedly — chunks are keyed by a
+deterministic SHA-256 of `source || content`, so re-ingesting the
+same PDF skips everything already present and reports
+`new: 0, skipped: N` instead of writing duplicate embeddings under
+fresh UUIDs.
 
 ---
 
 ## 5. UI service routes
 
-| Route             | Method | Triggers                             |
-|-------------------|--------|--------------------------------------|
-| `/`               | GET    | launcher screen                      |
-| `/chat`           | GET    | full chat screen + sidebar           |
-| `/send`           | POST   | submit chat message → htmx beforeend |
-| `/tools/news`     | GET    | render news card                     |
-| `/tools/prices`   | GET    | render prices card                   |
-| `/tools/earnings` | GET    | render earnings card                 |
-| `/tools/ingest`   | POST   | render ingest result                 |
+| Route             | Method | Triggers                                                 |
+|-------------------|--------|----------------------------------------------------------|
+| `/`               | GET    | launcher screen                                          |
+| `/chat`           | GET    | assessment screen + sidebar; `?tour=1` mounts the tutorial modal |
+| `/assessment`     | POST   | run the stock assessment graph → render the card        |
+| `/tools/news`     | GET    | render market news card (macro feed)                     |
+| `/tools/prices`   | GET    | render prices card                                       |
+| `/tools/earnings` | GET    | render earnings card                                     |
+| `/tools/ingest`   | POST   | render ingest result                                     |
 
 `@rt` handlers do three things only: ingest user input, call a handler
 in `ui_handler.py`, return a component from `ui_components.py`. Any
@@ -242,90 +255,108 @@ the tradeoff has changed.
 
 ---
 
-## 7. Agent inventory & consolidation
+## 7. The stock assessment graph (main flow)
 
-### Teacher feedback: redundant agents
+The chat box does *not* accept a free-form question. User input is
+irrelevant — the main interaction is a single button ("Generate AAPL
+Assessment") that triggers a **deterministic multi-node LangGraph**
+defined in `src/agent/stock_assessment.py`. We chose deterministic
+over agentic/tool-calling because llama3.2 (our local model) is weak
+at tool routing, and a fixed pipeline is easier to demo, easier to
+grade, and lets every node use a dedicated prompt rather than one
+generic supervisor prompt.
 
-The original notebook deliverable had **seven** agents/workflows.
-Reading them side-by-side confirms the feedback: the four "news"
-notebooks overlap heavily. Below is the full inventory, what was
-ported, and what we're dropping.
+### Graph shape
 
-| Notebook                      | Purpose                                                     | Source        | Status in `src/`          |
-|-------------------------------|-------------------------------------------------------------|---------------|---------------------------|
-| `rag_bot.ipynb`               | RAG over AAPL 10-K via Chroma                               | local PDF     | **Ported** → `rag_graph.py` |
-| `market_news_provider.ipynb`  | Finnhub news + sentiment/category/bullets graph             | Finnhub       | **Ported** → `market_news.py` |
-| `news_aggregator_chain.ipynb` | Orchestrator-worker research planner over DuckDuckGo        | DuckDuckGo    | **Port pending** (see below) |
-| `price_history_provider.ipynb`| yfinance OHLCV + TA-Lib indicators                          | yfinance      | **Ported** → `price_history.py` |
-| `earnings_calendar_provider.ipynb` | Finnhub earnings calendar lookup                       | Finnhub       | **Ported** → `earnings_calendar.py` |
-| `stock_news_deep_provider.ipynb` | DuckDuckGo wrapped in `deepagents.create_deep_agent`     | DuckDuckGo    | **DROP** (redundant)      |
-| `yf_news_provider.ipynb`      | YahooFinanceNewsTool inside a 2-node LangGraph              | Yahoo Finance | **DROP** (redundant)      |
-
-### Why those two get dropped
-
-- **`yf_news_provider`** is a strict subset of the agentic news
-  pattern — a 2-node LangGraph that wraps a single tool call. It
-  exists to demonstrate `tools_condition`, but `rag_graph.py` already
-  demonstrates that pattern with a real use case. Yahoo Finance news
-  itself is covered by Finnhub (`market_news.py`) and DuckDuckGo
-  (the news_aggregator port). Keeping it would mean three news
-  providers doing the same job from three different sources.
-- **`stock_news_deep_provider`** uses the `deepagents` framework
-  instead of LangGraph. Same data source as `news_aggregator_chain`
-  (DuckDuckGo), same goal (open-ended financial research), but with
-  less structure (no planning phase, no relevance grading). Keeping
-  both would mean maintaining two libraries to do one job. We pick
-  LangGraph because the rest of the stack is already on it.
-
-### Why `news_aggregator_chain` survives
-
-It's structurally different from `market_news.py`:
-
-- **`market_news.py`** is a **structured pipeline** — fetch curated
-  category feeds from Finnhub, classify each article, aggregate.
-  Good when you want "give me the macro picture for today."
-- **`news_aggregator_chain`** is an **exploratory planner** —
-  generate a research plan, fan out parallel DuckDuckGo searches,
-  grade results for relevance, synthesize. Good when you want
-  "research everything you can find about NVDA's antitrust
-  situation."
-
-These complement each other. The next step is to port the notebook
-into `src/agent/news_aggregator.py` and add a `/research` route.
-The plan:
-
-```python
-# src/agent/news_aggregator.py  (TODO)
-def get_aggregator_graph(): ...        # cached singleton
-async def run_research(topic: str) -> dict: ...
-
-# src/agent/app.py
-@app.post("/research")
-@log_call(logger)
-async def research_endpoint(body: ServiceRequest):
-    req = unpack_request(body)
-    topic = req.data.get("topic", "").strip()
-    if not topic:
-        return {"error": "empty topic"}
-    from src.agent.news_aggregator import run_research
-    return await run_research(topic)
+```
+               ┌─ fetch_news     ──┐
+               │                   │
+START ──▶ ────┼─ fetch_prices   ──┼──▶ build_rag_query ──▶ rag_context ──▶ synthesize ──▶ END
+               │                   │
+               └─ fetch_earnings ──┘
 ```
 
-The UI gets a sidebar button "Deep Research" that POSTs to
-`/tools/research` with a topic input.
+- **Three parallel fetch nodes** fan out from `START`. LangGraph
+  runs them concurrently because they all write to different keys
+  on the `AssessmentState` TypedDict (`news`, `prices`, `earnings`).
+- **`build_rag_query`** is an LLM step (`llm.invoke`) that reads all
+  three fetch outputs and writes ONE targeted retrieval question
+  (<= 25 words) for the 10-K knowledge base. The prompt is
+  aggressively ticker-anchored — it repeats the ticker in the system
+  message, the user message, and an example. A safety net rejects
+  any generated query that doesn't contain the ticker substring and
+  falls back to `"What does {ticker}'s 10-K identify as its primary
+  near-term risks and growth drivers?"`.
+- **`rag_context`** is **pure retrieval** — calls
+  `retrieve_10k_context` (thin wrapper around
+  `Chroma.similarity_search`) and stuffs the top-5 chunks into state
+  as a single annotated string. No LLM synthesis at this step; the
+  chunks are raw inputs for the next node.
+- **`synthesize`** is an LLM with `with_structured_output(StockAssessment)`.
+  The Pydantic model locks the output shape (thesis, outlook badge,
+  bull case, bear case, catalysts, risks). The prompt carries strict
+  anti-hallucination rules: every bullet must cite a specific input
+  signal, never attribute events to the wrong company, and return a
+  single "Insufficient data in current signals" bullet when a section
+  has no supporting evidence.
 
-### Final agent count
+### Two different news sources, on purpose
 
-5 agents under `src/`, down from 7 in the notebook deliverable:
+The **sidebar** Market News tool and the **assessment graph** use
+different Finnhub endpoints, and this is deliberate:
 
-1. **rag** — 10-K Q&A (Chroma + Ollama)
-2. **market_news** — Finnhub categorized macro digest
-3. **research** — DuckDuckGo exploratory planner *(pending port)*
-4. **prices** — yfinance OHLCV + TA
-5. **earnings** — Finnhub earnings calendar
+| Surface                       | Endpoint                        | Scope                      | Downstream processing                                     |
+|-------------------------------|---------------------------------|----------------------------|-----------------------------------------------------------|
+| Sidebar `/tools/news`         | `client.general_news(category)` | Macro feed (general/forex/…) | Per-article sentiment/category/bullets LangGraph         |
+| Assessment `fetch_news` node  | `client.company_news(symbol)`   | Ticker-scoped, last 7 days  | Ticker-substring filter (via `_TICKER_ALIASES`), no LLM  |
 
-`prices` and `earnings` are tool providers, not LLM agents — they
-exist as building blocks the chat agent can call.
+Keeping both gives a complementary picture: the assessment is
+anchored on Apple-specific news so the synthesizer never drifts,
+while the sidebar shows the broader market context so the user can
+sanity-check what's happening in the world around the stock. An
+earlier iteration used the macro feed inside the assessment and the
+downstream LLM immediately hijacked itself onto an unrelated
+Lucid/Uber headline — the ticker-scoped endpoint plus the alias
+filter is what keeps the grounding honest.
+
+### 10-K context is frozen at 2024
+
+The only PDF loaded into Chroma today is Apple's 2024 10-K filing.
+The assessment card carries a footer disclaimer making this explicit,
+and the synthesize prompt is aware that 10-K passages are historical
+context while price/news/earnings signals are live. When a new 10-K
+ships, re-running `/ingest` is safe — the content-hash chunk IDs
+mean the old chunks will be deduped and only the new ones get
+embedded. Swapping *versions* of the same filing (where the chunks
+genuinely differ) will write new embeddings alongside the old ones;
+if that becomes a problem, add a `source`-based purge before ingest.
+
+### Agent inventory: where we landed
+
+The original notebook deliverable had **seven** agents/workflows.
+Four of them were news-oriented and overlapped heavily. The final
+shipped inventory is 5 (one orchestrator + four building blocks):
+
+| Component                      | Role                                                           | Status          |
+|--------------------------------|----------------------------------------------------------------|-----------------|
+| `stock_assessment.py`          | Orchestrator — the deterministic 6-node graph above            | **Shipped**     |
+| `rag_graph.py`                 | Retrieval helper (`retrieve_10k_context`) used by assessment   | **Shipped**     |
+| `market_news.py`               | Macro classifier graph (sidebar) + `fetch_company_news`        | **Shipped**     |
+| `price_history.py`             | yfinance OHLCV + optional TA-Lib                               | **Shipped**     |
+| `earnings_calendar.py`         | Finnhub earnings calendar                                      | **Shipped**     |
+| `news_aggregator.py`           | DuckDuckGo exploratory planner from `news_aggregator_chain.ipynb` | *Pending port* |
+| `yf_news_provider.ipynb`       | YahooFinanceNewsTool 2-node graph                              | **Dropped**     |
+| `stock_news_deep_provider.ipynb` | `deepagents.create_deep_agent` wrapper                       | **Dropped**     |
+
+Why the two drops: `yf_news_provider` duplicated Finnhub's coverage
+with a less structured pattern, and `stock_news_deep_provider` used
+the `deepagents` framework instead of LangGraph — keeping it would
+have meant maintaining two agent libraries to do one job. LangGraph
+wins because the rest of the stack is already on it.
+
+`prices` and `earnings` are still tool providers (not LLM agents) —
+building blocks the orchestrator calls, and the sidebar exposes
+directly.
 
 ---
 
@@ -374,18 +405,19 @@ Every agent route returns an error explaining what's missing.
 langchain, langchain-core, langchain-community,
 langchain-ollama, langchain-chroma, langchain-unstructured,
 langchain-text-splitters, langgraph, chromadb, ollama,
-yfinance, finnhub-python, pandas, numpy, unstructured[pdf], pypdf
+yfinance, finnhub-python, pandas, numpy, unstructured[pdf], pypdf,
+TA-Lib
 ```
 
-This is enough to run RAG, market news, prices, and earnings end to
-end — assuming Ollama is running locally and `FINNHUB_API_KEY` is set.
+This is enough to run the assessment graph, market news, prices,
+and earnings end to end — assuming Ollama is running locally and
+`FINNHUB_API_KEY` is set. `TA-Lib` ships pre-built wheels (0.6.x+)
+that bundle the underlying C library, so no separate system package
+is required on Linux/macOS/Windows for the Python versions the
+wheels support.
 
 **Optional system libs** (NOT installed by pip):
 
-- **TA-Lib** — `price_history.py` attaches indicators only when
-  `import talib` succeeds. Install via your OS package manager
-  (`brew install ta-lib`, `apt install libta-lib0`, etc.) plus
-  `pip install ta-lib`.
 - **Poppler / Tesseract / libmagic** — needed by `unstructured` for
   PDF ingestion. `apt install poppler-utils tesseract-ocr libmagic1`
   on Debian/Ubuntu.
@@ -445,10 +477,13 @@ A typical first-run workflow:
 1. `ollama serve` in another terminal.
 2. `ollama pull llama3.2 && ollama pull embeddinggemma`.
 3. `python main.py`.
-4. Open http://localhost:8010, click **Continue**, click **Ingest
-   PDFs** in the sidebar — this loads the AAPL 10-K into Chroma.
-5. Type a question into the chat box. The first call is slow
-   (loading the model); subsequent calls hit the cached singleton.
+4. Open http://localhost:8010, click **Get Started** — the tutorial
+   modal walks through what the app does.
+5. Click **Ingest PDFs** in the right sidebar to load Apple's 2024
+   10-K into Chroma (idempotent — safe to re-run).
+6. Click **Generate AAPL Assessment**. The first run is slow (Ollama
+   cold start + 6-node graph + two LLM calls) but subsequent runs
+   hit the cached model and compiled graph.
 
 ---
 
@@ -458,17 +493,25 @@ In rough order:
 
 1. **Port `news_aggregator_chain.ipynb` to `src/agent/news_aggregator.py`**
    plus a `/research` route and a sidebar button. See §7.
-2. **Wire chat history.** Today `/chat` is single-shot — `data.query`
-   is the only field. Add `data.history: list[{"role", "content"}]`
-   and thread it through `run_rag_query`.
-3. **Move `AGENT_BASE_URL` into env.** Currently hardcoded in
+2. **Move `AGENT_BASE_URL` into env.** Currently hardcoded in
    `src/ui/ui_utils.py`.
-4. **Add a ticker selector to the prices/earnings sidebar buttons.**
-   Right now they're hardcoded to `AAPL`.
-5. **Auto-ingest on first boot** if Chroma is empty. Today the user
+3. **Add a ticker selector** so the assessment button (and the
+   prices/earnings sidebar shortcuts) are no longer hardcoded to
+   `AAPL`. The graph is already ticker-generic — `_TICKER_ALIASES`
+   in `stock_assessment.py` has entries for several large-caps.
+4. **Auto-ingest on first boot** if Chroma is empty. Today the user
    has to click the **Ingest PDFs** button manually.
-6. **Replace inline error strings with structured error codes** so
+5. **Replace inline error strings with structured error codes** so
    the UI can render targeted help (e.g. "Ollama not running" vs
    "Finnhub key missing").
+6. **Strip leading bullet markers** (`•`, `*`, `-`) in the assessment
+   card's bullet rendering. llama3.2 occasionally prefixes its own
+   markers inside a list item, and we already wrap in `<ul><li>`.
+7. **Onboarding: cookie/localStorage for the tour modal.** Today the
+   modal is gated by the launcher sending `?tour=1`. A returning
+   visitor arriving directly at `/chat` sees no tour; a reloader
+   arriving from the launcher sees it every time. Both are fine for
+   the demo but a small JS (`localStorage.getItem('tour_seen')`)
+   would make it auto-dismiss after the first visit.
 
 None of these are blocking — the scaffold runs as is.

@@ -28,9 +28,33 @@ def _get_finnhub_client():
 
 
 def fetch_news(category: Literal["general", "forex", "crypto", "merger"] = "general") -> list[dict]:
-    """Fetch raw news articles from Finnhub for the given category."""
+    """Fetch raw macro news articles from Finnhub for the given category."""
     client = _get_finnhub_client()
     return client.general_news(category=category) or []
+
+
+def fetch_company_news(symbol: str, lookback_days: int = 7) -> list[dict]:
+    """Fetch ticker-specific news from Finnhub over the last ``lookback_days``.
+
+    Unlike ``fetch_news`` (which hits Finnhub's ``general_news`` endpoint and
+    returns macro headlines), this calls ``company_news`` scoped to a single
+    symbol. Used by the stock assessment graph so the downstream query builder
+    and synthesizer stay anchored on the requested ticker instead of drifting
+    onto unrelated names that happen to appear in the macro feed.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    client = _get_finnhub_client()
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=lookback_days)
+    return (
+        client.company_news(
+            symbol,
+            _from=start.strftime("%Y-%m-%d"),
+            to=now.strftime("%Y-%m-%d"),
+        )
+        or []
+    )
 
 
 def _build_graph():
