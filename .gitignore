@@ -1,5 +1,20 @@
 venv/
 .venv/
 .env
+.sesskey
+
+# build / packaging
+*.egg-info/
+build/
+dist/
+
+# python caches
+__pycache__/
+*.pyc
+
+# runtime state
+logs/
+persistence/chroma/
+
 g(old)/gguf_models/.cache
 g(old)/gguf_models/finance-chat-Q2_K.gguf
