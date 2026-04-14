@@ -5,12 +5,9 @@ class-based with side effects in __init__; here it's a thin async
 wrapper that constructs the graph once and reuses it across calls.
 """
 
-import os
 from typing import Any, Literal
 
-from dotenv import load_dotenv
-
-load_dotenv()
+from src.config import FINNHUB_API_KEY
 
 _GRAPH_SINGLETON = None
 _FINNHUB_CLIENT = None
@@ -22,8 +19,7 @@ def _get_finnhub_client():
         return _FINNHUB_CLIENT
     import finnhub
 
-    api_key = os.getenv("FINNHUB_API_KEY", "")
-    _FINNHUB_CLIENT = finnhub.Client(api_key=api_key)
+    _FINNHUB_CLIENT = finnhub.Client(api_key=FINNHUB_API_KEY)
     return _FINNHUB_CLIENT
 
 

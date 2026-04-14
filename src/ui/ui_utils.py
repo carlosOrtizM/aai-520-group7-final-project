@@ -1,8 +1,9 @@
 """Serialization helpers for the UI -> agent bridge."""
 
+from src.config import AGENT_BASE_URL
 from src.utils import ServiceRequest
 
-AGENT_BASE_URL = "http://localhost:8011"
+__all__ = ["AGENT_BASE_URL", "pack_request", "pack_request_with_params", "send_to_agent"]
 
 
 def pack_request(**data) -> ServiceRequest:

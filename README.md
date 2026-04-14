@@ -113,9 +113,14 @@ agent-advisor/
   system package needed on Linux/macOS/Windows for supported Python
   versions. Indicators (MA, EMA, RSI, ADX, ATR, OBV) appear on both
   the sidebar prices card and the assessment graph's price signals.
-- **Optional system libs** (PDF ingestion):
-  - `poppler`, `tesseract`, `libmagic` — for `unstructured`. On
-    Debian/Ubuntu: `sudo apt install poppler-utils tesseract-ocr libmagic1`.
+- **Optional system libs for PDF ingestion** — `unstructured` needs
+  `poppler`, `tesseract`, and `libmagic` to parse the 10-K:
+  - **Debian / Ubuntu:** `sudo apt install poppler-utils tesseract-ocr libmagic1`
+  - **macOS** (via [Homebrew](https://brew.sh/)): `brew install poppler tesseract libmagic`
+  - **Apple Silicon note:** make sure `brew` is on your `PATH` (the
+    installer prints the exact `eval` line). Ollama, Python 3.11+,
+    and the `TA-Lib` wheel all ship arm64 builds, so the full stack
+    runs natively on M1/M2/M3 — no Rosetta needed.
 
 ### Install
 

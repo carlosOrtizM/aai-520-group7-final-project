@@ -15,9 +15,24 @@ from fastapi import FastAPI
 import uvicorn
 
 from src.agent.agent_utils import unpack_request, validate_ticker
+from src.config import missing_required
 from src.utils import ServiceRequest, create_logger, log_call
 
 logger = create_logger("agent")
+
+# Missing required config silently degrades routes (e.g. an empty
+# FINNHUB_API_KEY makes /news and /earnings return empty payloads
+# three minutes into an assessment run). Log one clear warning at
+# boot so it surfaces in logs/agent_<date>.txt instead of as a
+# head-scratch later.
+_missing_config = missing_required()
+if _missing_config:
+    logger.warning(
+        "Missing required config: %s — related routes will return "
+        "empty payloads. Set these in .env (copy .env.example to "
+        ".env and fill them in).",
+        ", ".join(_missing_config),
+    )
 
 app = FastAPI(title="Agent Advisor — Agent Service")
 

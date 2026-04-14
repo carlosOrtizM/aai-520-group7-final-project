@@ -362,21 +362,34 @@ directly.
 
 ## 8. Configuration & secrets
 
-All config lives in `.env` at the project root. Keys we read:
+All config lives in `.env` at the project root, loaded exactly once
+by `src/config.py`. Every module that needs a knob imports the
+typed constant from there instead of calling `os.getenv` itself, so
+`grep src.config src/` answers "what's configurable?" in one shot.
+Keys we read:
 
-| Key                  | Purpose                                          | Default                  |
-|----------------------|--------------------------------------------------|--------------------------|
-| `TEXT_MODEL`         | Ollama text generation model                     | `llama3.2:latest`        |
-| `EMBEDDING_MODEL`    | Ollama embedding model                           | `embeddinggemma:latest`  |
-| `PERSISTENCE_PATH`   | Root of local persistence dir                    | `persistence`            |
-| `VECTOR_DB_PATH`     | Subdir under persistence for Chroma              | `chroma`                 |
-| `KB_PATH`            | Subdir under persistence for source PDFs         | `reference_files`        |
-| `CHROMA_COLLECTION`  | Chroma collection name                           | `financial-collection`   |
-| `FINNHUB_API_KEY`    | Finnhub API key (news + earnings)                | *(empty)*                |
+| Key                  | Purpose                                          | Default                   |
+|----------------------|--------------------------------------------------|---------------------------|
+| `TEXT_MODEL`         | Ollama text generation model                     | `llama3.2:latest`         |
+| `EMBEDDING_MODEL`    | Ollama embedding model                           | `embeddinggemma:latest`   |
+| `PERSISTENCE_PATH`   | Root of local persistence dir                    | `persistence`             |
+| `VECTOR_DB_PATH`     | Subdir under persistence for Chroma              | `chroma`                  |
+| `KB_PATH`            | Subdir under persistence for source PDFs         | `reference_files`         |
+| `CHROMA_COLLECTION`  | Chroma collection name                           | `financial-collection`    |
+| `FINNHUB_API_KEY`    | Finnhub API key (news + earnings)                | *(empty — warning logged)*|
+| `AGENT_BASE_URL`     | Where the UI finds the agent service             | `http://localhost:8011`   |
 
-Real API keys NEVER go in git. The `.env` in the repo today has
-`FINNHUB_API_KEY=""` — fill it locally. Add `.env` to `.gitignore`
-before the next commit if it isn't already.
+`.env` is gitignored (see `.gitignore`). A committed
+[`.env.example`](.env.example) carries every key above with empty
+values and inline comments — new contributors clone, run
+`cp .env.example .env`, fill the Finnhub key, and they're done.
+
+Required-but-missing values surface as a single `logger.warning`
+at agent boot (`src/config.py::missing_required` is called from
+`src/agent/app.py` right after `create_logger`). Today only
+`FINNHUB_API_KEY` is considered required; other keys fall back to
+their defaults silently because those defaults are correct for the
+happy-path layout.
 
 Heavy LLM config (temperature, top-p, model overrides) is currently
 hardcoded in `llm_loader.py` (`temperature=0.2`). When we need to
@@ -419,8 +432,14 @@ wheels support.
 **Optional system libs** (NOT installed by pip):
 
 - **Poppler / Tesseract / libmagic** — needed by `unstructured` for
-  PDF ingestion. `apt install poppler-utils tesseract-ocr libmagic1`
-  on Debian/Ubuntu.
+  PDF ingestion.
+  - Debian / Ubuntu:
+    `sudo apt install poppler-utils tesseract-ocr libmagic1`
+  - macOS (Homebrew):
+    `brew install poppler tesseract libmagic`
+  - On Apple Silicon: the `TA-Lib` wheel, Ollama, and Python 3.11+
+    all ship native arm64 builds, so the full stack runs without
+    Rosetta.
 
 The full requirements.txt at the project root is the historical
 notebook dep list (223 packages including torch, transformers,
@@ -493,21 +512,19 @@ In rough order:
 
 1. **Port `news_aggregator_chain.ipynb` to `src/agent/news_aggregator.py`**
    plus a `/research` route and a sidebar button. See §7.
-2. **Move `AGENT_BASE_URL` into env.** Currently hardcoded in
-   `src/ui/ui_utils.py`.
-3. **Add a ticker selector** so the assessment button (and the
+2. **Add a ticker selector** so the assessment button (and the
    prices/earnings sidebar shortcuts) are no longer hardcoded to
    `AAPL`. The graph is already ticker-generic — `_TICKER_ALIASES`
    in `stock_assessment.py` has entries for several large-caps.
-4. **Auto-ingest on first boot** if Chroma is empty. Today the user
+3. **Auto-ingest on first boot** if Chroma is empty. Today the user
    has to click the **Ingest PDFs** button manually.
-5. **Replace inline error strings with structured error codes** so
+4. **Replace inline error strings with structured error codes** so
    the UI can render targeted help (e.g. "Ollama not running" vs
    "Finnhub key missing").
-6. **Strip leading bullet markers** (`•`, `*`, `-`) in the assessment
+5. **Strip leading bullet markers** (`•`, `*`, `-`) in the assessment
    card's bullet rendering. llama3.2 occasionally prefixes its own
    markers inside a list item, and we already wrap in `<ul><li>`.
-7. **Onboarding: cookie/localStorage for the tour modal.** Today the
+6. **Onboarding: cookie/localStorage for the tour modal.** Today the
    modal is gated by the launcher sending `?tour=1`. A returning
    visitor arriving directly at `/chat` sees no tour; a reloader
    arriving from the launcher sees it every time. Both are fine for

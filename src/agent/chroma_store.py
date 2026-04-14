@@ -8,19 +8,8 @@ exit, unlike the original application.py).
 
 import hashlib
 import os
-from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_PERSISTENCE_PATH = os.getenv("PERSISTENCE_PATH", "persistence")
-_VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", "chroma")
-_COLLECTION = os.getenv("CHROMA_COLLECTION", "financial-collection")
-_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "embeddinggemma:latest")
-
-CHROMA_DIRECTORY = str(_PROJECT_ROOT / _PERSISTENCE_PATH / _VECTOR_DB_PATH)
+from src.config import CHROMA_COLLECTION, CHROMA_DIRECTORY, EMBEDDING_MODEL
 
 _VECTOR_STORE = None
 
@@ -28,7 +17,7 @@ _VECTOR_STORE = None
 def _embedder():
     from langchain_ollama import OllamaEmbeddings
 
-    return OllamaEmbeddings(model=_EMBEDDING_MODEL)
+    return OllamaEmbeddings(model=EMBEDDING_MODEL)
 
 
 def get_vector_store():
@@ -47,9 +36,9 @@ def get_vector_store():
 
     os.makedirs(CHROMA_DIRECTORY, exist_ok=True)
     _VECTOR_STORE = Chroma(
-        collection_name=_COLLECTION,
+        collection_name=CHROMA_COLLECTION,
         embedding_function=_embedder(),
-        persist_directory=CHROMA_DIRECTORY,
+        persist_directory=str(CHROMA_DIRECTORY),
         client_settings=Settings(anonymized_telemetry=False),
     )
     return _VECTOR_STORE

@@ -6,22 +6,13 @@ chunked langchain documents ready for embedding.
 """
 
 import os
-from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_PERSISTENCE_PATH = os.getenv("PERSISTENCE_PATH", "persistence")
-_KB_PATH = os.getenv("KB_PATH", "reference_files")
-
-KB_DIRECTORY = str(_PROJECT_ROOT / _PERSISTENCE_PATH / _KB_PATH)
+from src.config import KB_DIRECTORY
 
 
 def directory_iterator(kb_directory: str | None = None) -> list:
     """Walk the KB directory and convert every PDF found into chunks."""
-    target = kb_directory or KB_DIRECTORY
+    target = kb_directory or str(KB_DIRECTORY)
     docs = []
     if not os.path.isdir(target):
         return docs

@@ -4,11 +4,7 @@ Ported from g(old)/session_init/llm_loader.py. Uses a module-level
 singleton so subsequent calls return the same client instance.
 """
 
-import os
-
-from dotenv import load_dotenv
-
-load_dotenv()
+from src.config import TEXT_MODEL
 
 _LLM_SINGLETON = None
 
@@ -31,6 +27,5 @@ def get_llm_client():
             "langchain_ollama is not installed — run `pip install langchain-ollama`"
         ) from e
 
-    model = os.getenv("TEXT_MODEL", "llama3.2:latest")
-    _LLM_SINGLETON = ChatOllama(model=model, temperature=0.2)
+    _LLM_SINGLETON = ChatOllama(model=TEXT_MODEL, temperature=0.2)
     return _LLM_SINGLETON
