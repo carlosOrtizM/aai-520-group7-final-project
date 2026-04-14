@@ -532,3 +532,38 @@ In rough order:
    would make it auto-dismiss after the first visit.
 
 None of these are blocking; the scaffold runs as is.
+
+---
+
+## 13. Disclaimer
+
+Agent Advisor is a research and education project. It is **not**
+investment, tax, legal, or financial advice. Nothing this system
+produces should be used to make trading or investment decisions
+without independent verification against primary sources.
+
+Concretely:
+
+- The orchestrator runs on a small local LLM (`llama3.2` via
+  Ollama). It can hallucinate, confuse entities, misattribute
+  events, and mis-cite article content — which is exactly why
+  the synth prompt carries the strict anti-hallucination rules
+  documented in §7 and why the news fetch node filters through
+  an LLM relevance classifier. Even with those guards, the
+  output of a capstone-scale local model should never be trusted
+  without checking the underlying signals.
+- Upstream data is best-effort. News / prices / earnings are
+  fetched from Finnhub and Yahoo Finance on demand. Finnhub
+  article summaries are frequently truncated upstream of us;
+  yfinance OHLCV is delayed, not real-time; consensus EPS and
+  revenue estimates revise between fetch and event.
+- The 10-K knowledge base is frozen at Apple's 2024 Form 10-K.
+  Anything dated after that filing is not in Chroma and will
+  not appear in retrieved context.
+- The assessment card footer carries a shortened version of this
+  disclaimer on every rendered result so end-users see it at
+  point-of-use, not just in the repo docs.
+
+Keep the disclaimer surfaces in sync: README §Disclaimer,
+`ARCHITECTURE.md` §13 (this one), and the
+`assessment_card` footer in `src/ui/ui_components.py`.

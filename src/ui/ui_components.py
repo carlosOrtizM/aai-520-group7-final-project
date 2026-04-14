@@ -1236,9 +1236,16 @@ def assessment_card(payload: dict):
                 NotStr("&#9432;"), " ",
                 "10-K context is grounded in Apple's ",
                 Strong("2024"),
-                " annual filing. Prices, headlines, and earnings are pulled "
-                "live from Finnhub and Yahoo Finance. Research tool only: ",
-                Strong("not investment advice"),
+                " annual filing and does not reflect anything dated after "
+                "that filing. Live signals come from Finnhub and Yahoo "
+                "Finance on a best-effort basis — article summaries may be "
+                "truncated upstream, prices are delayed rather than real-time, "
+                "and consensus estimates revise. The assessment is generated "
+                "by a small local LLM (llama3.2 via Ollama) which can "
+                "hallucinate, confuse entities, and mis-cite sources; verify "
+                "every bullet against primary sources before acting on it. "
+                "Research and education only: ",
+                Strong("not investment, tax, legal, or financial advice"),
                 ".",
                 cls="assessment-disclaimer-text",
             ),

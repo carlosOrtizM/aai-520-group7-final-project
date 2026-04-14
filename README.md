@@ -33,6 +33,7 @@ consolidation plan) read [`ARCHITECTURE.md`](ARCHITECTURE.md).
 - [Run it yourself](#run-it-yourself)
 - [Agents](#agents)
 - [Contributors](#contributors)
+- [Disclaimer](#disclaimer)
 - [License](#license)
 
 ## Overview
@@ -214,6 +215,31 @@ assessment uses ticker-filtered `company_news`).
       </td>
   </tr>
 </table>
+
+## Disclaimer
+
+Agent Advisor is a research and education project. **It is not
+investment, tax, legal, or financial advice.** Do not make trading
+or investment decisions based on its output.
+
+- **LLM outputs may be wrong.** The assessment graph runs on a small
+  local model (llama3.2 via Ollama). It can hallucinate facts,
+  confuse entities, misattribute events, and mis-summarize articles.
+  Every bullet it produces should be independently verified against
+  primary sources before being relied on for anything.
+- **Upstream data has limits.** News, prices, and earnings are
+  fetched best-effort from Finnhub and Yahoo Finance. Finnhub
+  article summaries are often truncated upstream and our filter
+  can only work with what is sent. Yahoo Finance OHLCV is delayed,
+  not real-time. Earnings estimates are consensus figures that can
+  revise between fetch and event.
+- **10-K context is frozen at 2024.** Retrieval passages come from
+  Apple's 2024 Form 10-K filing only. Anything dated after that
+  filing is not in the knowledge base and will not be reflected in
+  the retrieved context.
+- **No warranty.** The software is provided "as is" under the MIT
+  license below. Nothing in this repository constitutes investment,
+  tax, legal, or financial advice.
 
 ## License
 
